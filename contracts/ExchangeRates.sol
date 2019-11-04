@@ -205,6 +205,7 @@ contract ExchangeRates is usingBandProtocol, SelfDestructible {
      */
     function effectiveValue(bytes32 sourceCurrencyKey, uint sourceAmount, bytes32 destinationCurrencyKey)
         public
+        view
         rateNotStale(sourceCurrencyKey)
         rateNotStale(destinationCurrencyKey)
         returns (uint)
@@ -222,6 +223,7 @@ contract ExchangeRates is usingBandProtocol, SelfDestructible {
      */
     function rateForCurrency(bytes32 currencyKey)
         public
+        view
         returns (uint)
     {
         if (currencyKey == bytes32("sUSD")) {
@@ -237,6 +239,7 @@ contract ExchangeRates is usingBandProtocol, SelfDestructible {
      */
     function ratesForCurrencies(bytes32[] currencyKeys)
         public
+        view
         returns (uint[])
     {
         uint[] memory _rates = new uint[](currencyKeys.length);
