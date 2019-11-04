@@ -35,7 +35,7 @@ import "./SelfDestructible.sol";
  * @title The repository for exchange rates
  */
 
-contract ExchangeRates is SelfDestructible {
+contract ExchangeRates is usingBandProtocol, SelfDestructible {
 
 
     using SafeMath for uint;
@@ -97,8 +97,6 @@ contract ExchangeRates is SelfDestructible {
         SelfDestructible(_owner)
         public
     {
-        require(_currencyKeys.length == _newRates.length, "Currency key length and rate length must match.");
-
         oracle = _oracle;
 
         // The sUSD rate is always 1 and is never stale.
@@ -119,164 +117,9 @@ contract ExchangeRates is SelfDestructible {
             bytes32("sEUR"),
             bytes32("sGBP")
         ];
-
-        internalUpdateRates(_currencyKeys, _newRates, now);
     }
 
     /* ========== SETTERS ========== */
-
-    /**
-     * @notice Set the rates stored in this contract
-     * @param currencyKeys The currency keys you wish to update the rates for (in order)
-     * @param newRates The rates for each currency (in order)
-     * @param timeSent The timestamp of when the update was sent, specified in seconds since epoch (e.g. the same as the now keyword in solidity).contract
-     *                 This is useful because transactions can take a while to confirm, so this way we know how old the oracle's datapoint was exactly even
-     *                 if it takes a long time for the transaction to confirm.
-     */
-    function updateRates(bytes32[] currencyKeys, uint[] newRates, uint timeSent)
-        external
-        onlyOracle
-        returns(bool)
-    {
-        return internalUpdateRates(currencyKeys, newRates, timeSent);
-    }
-
-    /**
-     * @notice Internal function which sets the rates stored in this contract
-     * @param currencyKeys The currency keys you wish to update the rates for (in order)
-     * @param newRates The rates for each currency (in order)
-     * @param timeSent The timestamp of when the update was sent, specified in seconds since epoch (e.g. the same as the now keyword in solidity).contract
-     *                 This is useful because transactions can take a while to confirm, so this way we know how old the oracle's datapoint was exactly even
-     *                 if it takes a long time for the transaction to confirm.
-     */
-    function internalUpdateRates(bytes32[] currencyKeys, uint[] newRates, uint timeSent)
-        internal
-        returns(bool)
-    {
-        require(currencyKeys.length == newRates.length, "Currency key array length must match rates array length.");
-        require(timeSent < (now + ORACLE_FUTURE_LIMIT), "Time is too far into the future");
-
-        // Loop through each key and perform update.
-        for (uint i = 0; i < currencyKeys.length; i++) {
-            // Should not set any rate to zero ever, as no asset will ever be
-            // truely worthless and still valid. In this scenario, we should
-            // delete the rate and remove it from the system.
-            require(newRates[i] != 0, "Zero is not a valid rate, please call deleteRate instead.");
-            require(currencyKeys[i] != "sUSD", "Rate of sUSD cannot be updated, it's always UNIT.");
-
-            // We should only update the rate if it's at least the same age as the last rate we've got.
-            if (timeSent < lastRateUpdateTimes[currencyKeys[i]]) {
-                continue;
-            }
-
-            newRates[i] = rateOrInverted(currencyKeys[i], newRates[i]);
-
-            // Ok, go ahead with the update.
-            rates[currencyKeys[i]] = newRates[i];
-            lastRateUpdateTimes[currencyKeys[i]] = timeSent;
-        }
-
-        emit RatesUpdated(currencyKeys, newRates);
-
-        // Now update our XDR rate.
-        updateXDRRate(timeSent);
-
-        // If locked during a priceupdate then reset it
-        if (priceUpdateLock) {
-            priceUpdateLock = false;
-        }
-
-        return true;
-    }
-
-    /**
-     * @notice Internal function to get the inverted rate, if any, and mark an inverted
-     *  key as frozen if either limits are reached.
-     * @param currencyKey The price key to lookup
-     * @param rate The rate for the given price key
-     */
-    function rateOrInverted(bytes32 currencyKey, uint rate) internal returns (uint) {
-        // if an inverse mapping exists, adjust the price accordingly
-        InversePricing storage inverse = inversePricing[currencyKey];
-        if (inverse.entryPoint <= 0) {
-            return rate;
-        }
-
-        // set the rate to the current rate initially (if it's frozen, this is what will be returned)
-        uint newInverseRate = rates[currencyKey];
-
-        // get the new inverted rate if not frozen
-        if (!inverse.frozen) {
-            uint doubleEntryPoint = inverse.entryPoint.mul(2);
-            if (doubleEntryPoint <= rate) {
-                // avoid negative numbers for unsigned ints, so set this to 0
-                // which by the requirement that lowerLimit be > 0 will
-                // cause this to freeze the price to the lowerLimit
-                newInverseRate = 0;
-            } else {
-                newInverseRate = doubleEntryPoint.sub(rate);
-            }
-
-            // now if new rate hits our limits, set it to the limit and freeze
-            if (newInverseRate >= inverse.upperLimit) {
-                newInverseRate = inverse.upperLimit;
-            } else if (newInverseRate <= inverse.lowerLimit) {
-                newInverseRate = inverse.lowerLimit;
-            }
-
-            if (newInverseRate == inverse.upperLimit || newInverseRate == inverse.lowerLimit) {
-                inverse.frozen = true;
-                emit InversePriceFrozen(currencyKey);
-            }
-        }
-
-        return newInverseRate;
-    }
-
-    /**
-     * @notice Update the Synthetix Drawing Rights exchange rate based on other rates already updated.
-     */
-    function updateXDRRate(uint timeSent)
-        internal
-    {
-        uint total = 0;
-
-        for (uint i = 0; i < xdrParticipants.length; i++) {
-            total = rates[xdrParticipants[i]].add(total);
-        }
-
-        // Set the rate
-        rates["XDR"] = total;
-
-        // Record that we updated the XDR rate.
-        lastRateUpdateTimes["XDR"] = timeSent;
-
-        // Emit our updated event separate to the others to save
-        // moving data around between arrays.
-        bytes32[] memory eventCurrencyCode = new bytes32[](1);
-        eventCurrencyCode[0] = "XDR";
-
-        uint[] memory eventRate = new uint[](1);
-        eventRate[0] = rates["XDR"];
-
-        emit RatesUpdated(eventCurrencyCode, eventRate);
-    }
-
-    /**
-     * @notice Delete a rate stored in the contract
-     * @param currencyKey The currency key you wish to delete the rate for
-     */
-    function deleteRate(bytes32 currencyKey)
-        external
-        onlyOracle
-    {
-        require(rates[currencyKey] > 0, "Rate is zero");
-
-        delete rates[currencyKey];
-        delete lastRateUpdateTimes[currencyKey];
-
-        emit RateDeleted(currencyKey);
-    }
 
     /**
      * @notice Set the Oracle that pushes the rate information to this contract
@@ -300,17 +143,6 @@ contract ExchangeRates is SelfDestructible {
     {
         rateStalePeriod = _time;
         emit RateStalePeriodUpdated(rateStalePeriod);
-    }
-
-    /**
-     * @notice Set the the locked state for a priceUpdate call
-     * @param _priceUpdateLock lock boolean flag
-     */
-    function setPriceUpdateLock(bool _priceUpdateLock)
-        external
-        onlyOracle
-    {
-        priceUpdateLock = _priceUpdateLock;
     }
 
     /**
@@ -501,12 +333,6 @@ contract ExchangeRates is SelfDestructible {
 
     modifier rateNotStale(bytes32 currencyKey) {
         require(!rateIsStale(currencyKey), "Rate stale or nonexistant currency");
-        _;
-    }
-
-    modifier onlyOracle
-    {
-        require(msg.sender == oracle, "Only the oracle can perform this action");
         _;
     }
 

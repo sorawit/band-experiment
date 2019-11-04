@@ -83,17 +83,17 @@ const users = Object.entries(
 		);
 		// update rates
 		console.log(gray('Updating rates'));
-		await ExchangeRates.methods
-			.updateRates(
-				[SNX].concat(synths.map(({ name }) => web3.utils.asciiToHex(name))),
-				[web3.utils.toWei('0.3')].concat(synths.map(() => web3.utils.toWei('1'))),
-				timestamp
-			)
-			.send({
-				from: accounts.deployer.public,
-				gas: gasLimit,
-				gasPrice,
-			});
+		// await ExchangeRates.methods
+		// 	.updateRates(
+		// 		[SNX].concat(synths.map(({ name }) => web3.utils.asciiToHex(name))),
+		// 		[web3.utils.toWei('0.3')].concat(synths.map(() => web3.utils.toWei('1'))),
+		// 		timestamp
+		// 	)
+		// 	.send({
+		// 		from: accounts.deployer.public,
+		// 		gas: gasLimit,
+		// 		gasPrice,
+		// 	});
 
 		// transfer SNX to first account
 		console.log(gray('Transferring 100k SNX to user1'));

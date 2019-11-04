@@ -318,15 +318,15 @@ module.exports = async function(deployer, network, accounts) {
 	// SNX: 0.1 USD
 	// sBTC: 5000 USD
 	// iBTC: 4000 USD
-	await exchangeRates.updateRates(
-		currencyKeys
-			.filter(currency => currency !== 'sUSD')
-			.concat(['SNX'])
-			.map(web3.utils.asciiToHex),
-		['1', '0.5', '1.25', '0.1', '5000', '4000'].map(number => web3.utils.toWei(number, 'ether')),
-		timestamp,
-		{ from: oracle }
-	);
+	// await exchangeRates.updateRates(
+	// 	currencyKeys
+	// 		.filter(currency => currency !== 'sUSD')
+	// 		.concat(['SNX'])
+	// 		.map(web3.utils.asciiToHex),
+	// 	['1', '0.5', '1.25', '0.1', '5000', '4000'].map(number => web3.utils.toWei(number, 'ether')),
+	// 	timestamp,
+	// 	{ from: oracle }
+	// );
 
 	// --------------------
 	// Depot
