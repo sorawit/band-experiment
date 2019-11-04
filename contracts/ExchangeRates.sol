@@ -41,9 +41,6 @@ contract ExchangeRates is usingBandProtocol, SelfDestructible {
     using SafeMath for uint;
     using SafeDecimalMath for uint;
 
-    // Exchange rates stored by currency code, e.g. 'SNX', or 'sUSD'
-    mapping(bytes32 => uint) public rates;
-
     // Update times stored by currency code, e.g. 'SNX', or 'sUSD'
     mapping(bytes32 => uint) public lastRateUpdateTimes;
 
@@ -54,7 +51,7 @@ contract ExchangeRates is usingBandProtocol, SelfDestructible {
     uint constant ORACLE_FUTURE_LIMIT = 10 minutes;
 
     // How long will the contract assume the rate of any asset is correct
-    uint public rateStalePeriod = 3 hours;
+    uint public rateStalePeriod = 0;
 
     // Lock exchanges until price update complete
     bool public priceUpdateLock = false;
@@ -98,10 +95,6 @@ contract ExchangeRates is usingBandProtocol, SelfDestructible {
         public
     {
         oracle = _oracle;
-
-        // The sUSD rate is always 1 and is never stale.
-        rates["sUSD"] = SafeDecimalMath.unit();
-        lastRateUpdateTimes["sUSD"] = now;
 
         // These are the currencies that make up the XDR basket.
         // These are hard coded because:
@@ -212,7 +205,6 @@ contract ExchangeRates is usingBandProtocol, SelfDestructible {
      */
     function effectiveValue(bytes32 sourceCurrencyKey, uint sourceAmount, bytes32 destinationCurrencyKey)
         public
-        view
         rateNotStale(sourceCurrencyKey)
         rateNotStale(destinationCurrencyKey)
         returns (uint)
@@ -230,10 +222,14 @@ contract ExchangeRates is usingBandProtocol, SelfDestructible {
      */
     function rateForCurrency(bytes32 currencyKey)
         public
-        view
         returns (uint)
     {
-        return rates[currencyKey];
+        if (currencyKey == bytes32("sUSD")) {
+            // The sUSD rate is always 1 and is never stale.
+            return SafeDecimalMath.unit();
+        }
+        uint256 value = Oracle(oracle).querySpotPrice(string(abi.encodePacked(currencyKey)));
+        return value;
     }
 
     /**
@@ -241,13 +237,12 @@ contract ExchangeRates is usingBandProtocol, SelfDestructible {
      */
     function ratesForCurrencies(bytes32[] currencyKeys)
         public
-        view
         returns (uint[])
     {
         uint[] memory _rates = new uint[](currencyKeys.length);
 
         for (uint8 i = 0; i < currencyKeys.length; i++) {
-            _rates[i] = rates[currencyKeys[i]];
+            _rates[i] = rateForCurrency(currencyKeys[i]);
         }
 
         return _rates;
